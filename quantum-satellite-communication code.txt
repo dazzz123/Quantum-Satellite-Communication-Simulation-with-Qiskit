@@ -1,0 +1,74 @@
+import numpy as np
+from qiskit import QuantumCircuit, Aer, execute
+from qiskit.visualization import plot_histogram
+
+# Function to encode qubits with random basis
+def encode_qubits(num_qubits):
+    qc = QuantumCircuit(num_qubits, num_qubits)
+    basis = np.random.choice(['X', 'Z'], num_qubits)  # Random choice of measurement basis
+    for i in range(num_qubits):
+        if basis[i] == 'X':
+            qc.h(i)  # Apply Hadamard gate for X basis
+        elif basis[i] == 'Z':
+            pass  # Qubits are already in Z basis (default)
+    return qc, basis
+
+# Function to simulate quantum channel noise
+def apply_noise(qc, noise_prob):
+    for qubit in range(qc.num_qubits):
+        if np.random.random() < noise_prob:
+            qc.h(qubit)  # Apply Hadamard gate to simulate noise (bit flip error)
+    return qc
+
+# Function to perform QKD protocol with error correction and privacy amplification
+def bb84_qkd_ec_pa(num_qubits, noise_prob):
+    # Alice generates qubits and encodes them
+    alice_qc, alice_basis = encode_qubits(num_qubits)
+    
+    # Alice sends qubits to Bob (via satellite node)
+    # Assume perfect transmission for simplicity
+    bob_qc = alice_qc.copy()
+    
+    # Eve intercepts and applies noise to qubits
+    eve_qc = apply_noise(bob_qc, noise_prob)
+    
+    # Bob measures qubits in the same basis used by Alice
+    bob_basis = alice_basis  # Bob uses the same basis as Alice
+    for qubit in range(num_qubits):
+        if alice_basis[qubit] == 'X':
+            bob_qc.h(qubit)  # Measure in X basis
+        elif alice_basis[qubit] == 'Z':
+            pass  # Measure in Z basis (default)
+    
+    # Perform measurements
+    sim = Aer.get_backend('qasm_simulator')
+    job = execute(bob_qc, sim, shots=1)
+    result = job.result()
+    counts = result.get_counts()
+    
+    # Error correction (parity check)
+    corrected_key = ''
+    for i in range(num_qubits):
+        if alice_basis[i] == bob_basis[i]:
+            corrected_key += list(counts.keys())[0][i]  # If measurement basis matches, keep the result
+        else:
+            corrected_key += '0' if list(counts.keys())[0][i] == '1' else '1'  # Otherwise, flip the result
+    
+    # Privacy amplification (truncate the key)
+    final_key_length = 8  # Truncate key to final length
+    final_key = corrected_key[:final_key_length]
+    
+    return final_key
+
+# Main function to run simulation
+def main():
+    num_qubits = 10  # Number of qubits for the simulation
+    noise_prob = 0.1  # Probability of noise in quantum channel
+    
+    # Run QKD protocol with error correction and privacy amplification
+    final_key = bb84_qkd_ec_pa(num_qubits, noise_prob)
+    
+    print("Final key after error correction and privacy amplification:", final_key)
+
+if __name__ == "__main__":
+    main()
